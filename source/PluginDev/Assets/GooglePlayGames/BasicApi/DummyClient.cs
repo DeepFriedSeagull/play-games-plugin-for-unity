@@ -75,6 +75,10 @@ namespace GooglePlayGames.BasicApi {
             }
         }
 
+        
+        // Show player selection UI
+        public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers) {}
+
         public void LoadState(int slot, OnStateLoadedListener listener) {
             if (listener != null) {
                 listener.OnStateLoaded(false, slot, null);

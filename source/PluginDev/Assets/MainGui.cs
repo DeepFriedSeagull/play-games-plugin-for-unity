@@ -24,7 +24,7 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
     const int Margin = 20, Spacing = 10;
     const float FontSizeFactor = 50;
     const int GridCols = 2;
-    const int GridRows = 7;
+    const int GridRows = 8;
 
     public GUISkin GuiSkin;
 
@@ -56,7 +56,7 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
     }
 
     void DrawStatus() {
-        GUI.Label(CalcGrid(0, 6, 2, 1), mStatus);
+        GUI.Label(CalcGrid(0, 7, 2, 1), mStatus);
     }
 
     void ShowNotAuthUi() {
@@ -97,6 +97,12 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         
         if (GUI.Button(CalcGrid(1,5), "Sign Out")) {
             DoSignOut();
+        }
+
+        
+        if (GUI.Button(CalcGrid(0,6), "Create TBMG")) 
+        {
+            DoTurnBasedMultiplayerGame();
         }
     }
 
@@ -270,4 +276,11 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         SetStandBy("Loading from cloud...");
         ((PlayGamesPlatform) Social.Active).LoadState(0, this);
     }
+
+    void DoTurnBasedMultiplayerGame()
+    {
+        PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
+        p.ShowPlayerSelectionUI( 1, 1 );
+    }
+
 }

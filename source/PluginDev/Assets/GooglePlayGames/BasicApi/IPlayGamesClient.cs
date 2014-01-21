@@ -81,6 +81,9 @@ namespace GooglePlayGames.BasicApi {
         // Show leaderboards UI (if lbId == null, show all leaderboards)
         void ShowLeaderboardUI(string lbId);
 
+        // Show player selection UI
+        void ShowPlayerSelectionUI(int minPlayers, int maxPlayers);
+
         // Report a score to given leaderboard
         void SubmitScore(string lbId, long score, Action<bool> callback);
 

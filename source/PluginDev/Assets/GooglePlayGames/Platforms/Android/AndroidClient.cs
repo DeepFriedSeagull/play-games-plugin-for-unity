@@ -470,6 +470,23 @@ namespace GooglePlayGames.Android {
         }
 
         // called from game thread
+        public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers)
+        {  
+            Logger.d("AndroidClient.ShowPlayerSelectionUI, " + minPlayers.ToString() + "- " + maxPlayers.ToString() );
+
+            CallGamesClientApi("show PlaySelection ui", (AndroidJavaObject c) =>
+                {
+                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getSelectPlayersIntent", minPlayers, maxPlayers);
+
+                    AndroidJavaObject activity = GetActivity();
+                    Logger.d("About to show LB UI with intent " + intent + ", activity " + activity);
+                    if (intent != null && activity != null) {
+                        activity.Call("startActivityForResult", intent, RC_UNUSED);
+                    }
+                }, null);
+        }
+
+        // called from game thread
         public void SubmitScore(string lbId, long score, Action<bool> callback) {
             Logger.d("AndroidClient.SubmitScore, lb=" + lbId + ", score=" + score);
             CallGamesClientApi("submit score " + score + ", lb " + lbId, (AndroidJavaObject c) => {

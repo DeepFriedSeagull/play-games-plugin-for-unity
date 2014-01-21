@@ -426,6 +426,21 @@ namespace GooglePlayGames {
         }
 
         /// <summary>
+        /// Shows the standard Google Play Games player selection interface,
+        /// which allows the player to browse for G+ contacts and invite them for a game.
+        /// </summary>
+        public void ShowPlayerSelectionUI( int minPlayers, int maxPlayers) {
+            if (!IsAuthenticated()) {
+                Logger.e("ShowPlayerSelectionUI can only be called after authentication.");
+                return;
+            }
+            
+            Logger.d("ShowPlayerSelectionUI");
+            mClient.ShowPlayerSelectionUI( minPlayers, maxPlayers );
+        }
+
+
+        /// <summary>
         /// Shows the standard Google Play Games leaderboards user interface,
         /// which allows the player to browse their leaderboards. If you have
         /// configured a specific leaderboard as the default through a call to

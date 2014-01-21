@@ -18,8 +18,8 @@ using System;
 
 namespace GooglePlayGames {
     public class PluginVersion {
-        public const int VersionInt = 0x0800;
-        public const string VersionString = "0.8.00";
+        public const int VersionInt = 0x0810;
+        public const string VersionString = "0.8.10";
     }
 }
 
