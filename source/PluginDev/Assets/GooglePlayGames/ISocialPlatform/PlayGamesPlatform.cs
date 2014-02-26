@@ -425,10 +425,26 @@ namespace GooglePlayGames {
             mClient.ShowAchievementsUI();
         }
 
-        /// <summary>
-        /// Shows the standard Google Play Games player selection interface,
-        /// which allows the player to browse for G+ contacts and invite them for a game.
-        /// </summary>
+
+		
+		/// <summary>
+		/// Create a Turned based match
+		/// </summary>
+		public void CreateTurnBasedMatch( ITurnBasedMatchListerner listerner, int minPlayers, int maxPlayers)
+		{
+			if (!IsAuthenticated()) {
+				Logger.e("CreateTurnBasedMatch can only be called after authentication.");
+				return;
+			}
+			// Show Player Selection
+			mClient.SetTurnBasedMatchListerner( listerner );
+			ShowPlayerSelectionUI( minPlayers, maxPlayers );
+		}
+		
+		/// <summary>
+		/// Shows the standard Google Play Games player selection interface,
+		/// which allows the player to browse for G+ contacts and invite them for a game.
+		/// </summary>
         public void ShowPlayerSelectionUI( int minPlayers, int maxPlayers) {
             if (!IsAuthenticated()) {
                 Logger.e("ShowPlayerSelectionUI can only be called after authentication.");
@@ -438,6 +454,17 @@ namespace GooglePlayGames {
             Logger.d("ShowPlayerSelectionUI");
             mClient.ShowPlayerSelectionUI( minPlayers, maxPlayers );
         }
+
+		// Take a turn in a turn based game
+		public void TBMG_TakeTurn(string matchId, byte[] newData, string pendingParticipant )
+		{
+			if (!IsAuthenticated()) {
+				Logger.e("CreateTurnBasedMatch can only be called after authentication.");
+				return;
+			}
+
+			mClient.TBMG_TakeTurn(  matchId, newData, pendingParticipant );
+		}
 
 
         /// <summary>
@@ -477,6 +504,34 @@ namespace GooglePlayGames {
             }
             mClient.ShowLeaderboardUI(lbId);
         }
+
+        /// <summary>
+        /// Shows the default interface for the match inbox.
+        /// </summary>
+        public void ShowMatchInboxUI()
+        {    
+            if (!IsAuthenticated()) {
+                Logger.e("ShowMatchInboxUI can only be called after authentication.");
+                return;
+            }
+            
+            Logger.d("ShowMatchInboxUI");
+            mClient.ShowMatchInboxUI();
+        }
+
+		
+		// Returned the turn base match info
+		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo()
+		{
+			if (!IsAuthenticated()) {
+				Logger.e("GetIntentTurnBasedMatchInfo can only be called after authentication.");
+				return null;
+			}
+			
+			Logger.d("GetIntentTurnBasedMatchInfo");
+			return mClient.GetIntentTurnBasedMatchInfo();
+		}
+
 
         /// <summary>
         /// Sets the default leaderboard for the leaderboard UI. After calling this

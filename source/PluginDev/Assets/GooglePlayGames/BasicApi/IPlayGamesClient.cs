@@ -84,7 +84,19 @@ namespace GooglePlayGames.BasicApi {
         // Show player selection UI
         void ShowPlayerSelectionUI(int minPlayers, int maxPlayers);
 
-        // Report a score to given leaderboard
+		// Setup a listener 
+		void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner );
+
+        // Show the Match Inbox UI
+        void ShowMatchInboxUI();
+
+		// Take turn in a Turn Based Match Game
+		void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant );
+        
+		// Return the TurnBasedMatchInfo for the launching Intent
+		TurnBasedMatchInfo GetIntentTurnBasedMatchInfo();
+
+		// Report a score to given leaderboard
         void SubmitScore(string lbId, long score, Action<bool> callback);
 
         // Set the buffer encrypter/decrypter used when saving cloud data to local storage.

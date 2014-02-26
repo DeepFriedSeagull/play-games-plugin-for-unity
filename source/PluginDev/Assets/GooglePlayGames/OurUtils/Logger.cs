@@ -42,7 +42,7 @@ namespace GooglePlayGames.OurUtils {
         }
 
         public static void e(string msg) {
-            Debug.LogWarning("*** " + LOG_PREF + " ERROR: " + msg);
+            Debug.LogError("*** " + LOG_PREF + " ERROR: " + msg);
         }
 
         public static string describe(byte[] b) {

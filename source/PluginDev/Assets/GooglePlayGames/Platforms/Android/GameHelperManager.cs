@@ -21,7 +21,7 @@ using GooglePlayGames.OurUtils;
 
 namespace GooglePlayGames.Android {
     internal class GameHelperManager {
-        const string SignInHelperManagerClass = "com.google.example.games.pluginsupport.SignInHelperManager";
+        const string SignInHelperManagerClass = "com.cedco.six.player.SignInHelperManager";
         const string BaseGameUtilsPkg = "com.google.example.games.basegameutils";
         const string GameHelperClass = BaseGameUtilsPkg + ".GameHelper";
         const string GameHelperListenerClass = GameHelperClass + "$GameHelperListener";

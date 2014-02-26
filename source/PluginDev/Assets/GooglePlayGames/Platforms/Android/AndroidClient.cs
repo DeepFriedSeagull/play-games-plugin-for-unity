@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using GooglePlayGames.BasicApi;
 using GooglePlayGames.OurUtils;
+using System.Text;
 
 namespace GooglePlayGames.Android {
     public class AndroidClient : IPlayGamesClient {
@@ -39,7 +40,7 @@ namespace GooglePlayGames.Android {
         // are we trying silent authentication? If so, then we can't show UIs in the process:
         // we have to fail instead
         bool mSilentAuth = false;
-
+		
         // user's ID and display name (retrieved on sign in)
         string mUserId = null, mUserDisplayName = null;
 
@@ -56,7 +57,19 @@ namespace GooglePlayGames.Android {
         List<Action> mActionsPendingSignIn = new List<Action>();
 
         // Result code for child activities whose result we don't care about
+        const int RC_SELECT_PLAYERS = 9002;
+        const int RC_MATCH_INBOX =  9003;
         const int RC_UNUSED = 9999;
+		
+		// Horrible design hack
+		// Boolean reprensenting if we are creating a turned base game
+		bool m_pendingTBMGCreation = false;
+
+		// Turned base game creation listener
+		ITurnBasedMatchListerner mTurnBasedListener;
+
+		// Returned the tbmp match received through an invitation notification
+		TurnBasedMatchInfo m_turnBasedMatchInfo;
 
         public AndroidClient() {
             RunOnUiThread(() => {
@@ -194,7 +207,22 @@ namespace GooglePlayGames.Android {
                 // was brought to the foreground and sign in has succeeded even though
                 // we were not in an auth flow).
                 Logger.d("Normal lifecycle OnSignInSucceeded received.");
+
+				//CJG
+                if ( m_pendingTBMGCreation == true )
+                {
+                    m_pendingTBMGCreation = false;
+					CreateTurnBasedMatch();
+                }
+
+				AndroidJavaObject turnBasedMatch = mGameHelperManager.GetGamesClient().Call<AndroidJavaObject>( "getTurnBasedMatch" );
+				if (turnBasedMatch.GetRawObject().ToInt32() != 0)
+				{
+					m_turnBasedMatchInfo = new TurnBasedMatchInfo (turnBasedMatch );
+				}
+
                 RunPendingActions();
+
             }
         }
 
@@ -233,6 +261,13 @@ namespace GooglePlayGames.Android {
                 mAuthState = AuthState.NoAuth;
             }
         }
+
+		// Returned the turn base match info
+		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo()
+		{
+			return m_turnBasedMatchInfo;
+		}
+
 
         // Runs any actions pending in the mActionsPendingSignIn queue
         private void RunPendingActions() {
@@ -468,6 +503,11 @@ namespace GooglePlayGames.Android {
                 }
             }, null);
         }
+		
+		public void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner )
+		{
+			mTurnBasedListener = listerner;
+		}
 
         // called from game thread
         public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers)
@@ -476,15 +516,107 @@ namespace GooglePlayGames.Android {
 
             CallGamesClientApi("show PlaySelection ui", (AndroidJavaObject c) =>
                 {
-                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getSelectPlayersIntent", minPlayers, maxPlayers);
+                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getSelectPlayersIntent", minPlayers, maxPlayers, false);
 
                     AndroidJavaObject activity = GetActivity();
-                    Logger.d("About to show LB UI with intent " + intent + ", activity " + activity);
+                    Logger.d("About to show PlayerSelection UI with intent " + intent + ", activity " + activity);
                     if (intent != null && activity != null) {
-                        activity.Call("startActivityForResult", intent, RC_UNUSED);
+                        activity.Call("startActivityForResult", intent, RC_SELECT_PLAYERS);
+                    }
+                }, null);
+
+            m_pendingTBMGCreation = true;
+        }
+        
+		// called from UI thread Only
+		public void CreateTurnBasedMatch()
+		{
+			Logger.d("AndroidClient.CreateTurnBasedMatch");
+
+			//AndroidJavaObject matchConfig = activity.Callt<AndroidJavaObject>("getPendingTurnBasedMatchConfig");
+
+			AndroidJavaObject activity = GetActivity();
+			AndroidJavaObject matchConfig = activity.Call<AndroidJavaObject>("getPendingTurnBasedMatchConfig");
+
+
+			mGameHelperManager.GetGamesClient().Call( "createTurnBasedMatch", new OnTurnBasedMatchInitiatedListenerProxy(this), matchConfig);
+
+		}
+
+		// called from UI thread
+		public void OnTurnBasedMatchInitiated(int statusCode, AndroidJavaObject match)
+		{
+			Logger.d("AndroidClient.OnTurnBasedMatchInitiated");
+
+			TurnBasedMatchInfo turnBasedMatchInfo = new TurnBasedMatchInfo( match );
+
+			if ( mTurnBasedListener == null)
+			{
+				Logger.e("Invalid mTurnBasedListener setting");
+				return;
+
+			}
+			// Chose the first player
+			string prendingPlayer = mTurnBasedListener.GetInitialParticipant( turnBasedMatchInfo );
+			// Define StartUp Data
+			byte[] initData = mTurnBasedListener.GetInitialData( turnBasedMatchInfo ); 
+
+
+			// public void takeTurn (OnTurnBasedMatchUpdatedListener listener, String matchId, byte[] matchData, String pendingParticipantId)
+			mGameHelperManager.GetGamesClient().Call( "takeTurn", new OnTurnBasedMatchUpdatedListenerProxy( this ),
+			                                         turnBasedMatchInfo.Guid, initData, prendingPlayer );
+
+			
+			PlayGamesHelperObject.RunOnGameThread( () => {
+				mTurnBasedListener.OnTurnBasedMatchInitiated(statusCode, turnBasedMatchInfo );
+			} );
+
+		}
+		
+		// called from UI thread
+		public void OnTurnBasedMatchUpdated(int statusCode, AndroidJavaObject match)
+		{
+			Logger.d("AndroidClient.OnTurnBasedMatchUpdated");
+			TurnBasedMatchInfo turnBasedMatchInfo = new TurnBasedMatchInfo( match );
+			Debug.Log( turnBasedMatchInfo.ToString() );
+
+				
+			PlayGamesHelperObject.RunOnGameThread( () => {
+				mTurnBasedListener.OnTurnBasedMatchUpdated(statusCode, turnBasedMatchInfo );
+			} );
+		}
+
+
+		// Called from the Game thread
+		public void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant ) 
+		{
+
+			CallGamesClientApi("TBMG_TakeTurn", (AndroidJavaObject c) => {
+				c.Call("takeTurn", new OnTurnBasedMatchUpdatedListenerProxy( this ),
+				       matchId, newData, pendingParticipant );
+			}, null );
+
+
+		}
+
+
+        // called from game thread
+        public void ShowMatchInboxUI()
+        {
+            Logger.d("AndroidClient.ShowMatchInboxUI");
+            
+            CallGamesClientApi("show match inbox ui", (AndroidJavaObject c) =>
+                {
+                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getMatchInboxIntent");
+                    
+                    AndroidJavaObject activity = GetActivity();
+                    Logger.d("About to show ShowMatchInbox UI with intent " + intent + ", activity " + activity);
+                    if (intent != null && activity != null) {
+                    activity.Call("startActivityForResult", intent, RC_MATCH_INBOX);
                     }
                 }, null);
         }
+
 
         // called from game thread
         public void SubmitScore(string lbId, long score, Action<bool> callback) {

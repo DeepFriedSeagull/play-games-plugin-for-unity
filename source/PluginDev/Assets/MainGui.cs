@@ -104,6 +104,11 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         {
             DoTurnBasedMultiplayerGame();
         }
+
+        if (GUI.Button(CalcGrid(1,6), "Invitation Inbox") )
+        {
+            DoShowMatchInbox();
+        }
     }
 
     void ShowEffect(bool success) {
@@ -281,6 +286,13 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
     {
         PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
         p.ShowPlayerSelectionUI( 1, 1 );
+    }
+
+    void DoShowMatchInbox()
+    {
+        PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
+        p.ShowMatchInboxUI();
+
     }
 
 }

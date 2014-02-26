@@ -37,7 +37,9 @@ namespace GooglePlayGames.OurUtils {
 
         // callback for application pause and focus events
         static Action<bool> sPauseCallback = null;
-        static Action<bool> sFocusCallback = null;
+
+		// CJG Disabling Focus callbacs, as it does't work
+        //static Action<bool> sFocusCallback = null;
 
         // Call this once from the game thread
         public static void CreateObject() {
@@ -96,12 +98,13 @@ namespace GooglePlayGames.OurUtils {
             }
         }
 
-        void OnApplicationFocus(bool focused) {
-            Logger.d("PlayGamesHelperObject.OnApplicationFocus " + focused);
-            if (null != sFocusCallback) {
-                sFocusCallback.Invoke(focused);
-            }
-        }
+		// CJG Disabling Focus callbacs, as it does't work
+//        void OnApplicationFocus(bool focused) {
+//            Logger.d("PlayGamesHelperObject.OnApplicationFocus " + focused);
+//            if (null != sFocusCallback) {
+//                sFocusCallback.Invoke(focused);
+//            }
+//        }
 
         void OnApplicationPause(bool paused) {
             Logger.d("PlayGamesHelperObject.OnApplicationPause "  + paused);
@@ -110,9 +113,15 @@ namespace GooglePlayGames.OurUtils {
             }
         }
 
-        public static void SetFocusCallback(Action<bool> callback) {
-            sFocusCallback = callback;
-        }
+		void OnApplicationQuit() {
+			Logger.d("PlayGamesHelperObject.OnApplicationQuit " );
+		}
+
+
+		// CJG Disabling Focus callbacs, as it does't work
+//        public static void SetFocusCallback(Action<bool> callback) {
+//            sFocusCallback = callback;
+//        }
 
         public static void SetPauseCallback(Action<bool> callback) {
             sPauseCallback = callback;

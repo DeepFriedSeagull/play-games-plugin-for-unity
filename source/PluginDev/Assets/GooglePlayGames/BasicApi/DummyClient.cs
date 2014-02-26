@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections;
+using GooglePlayGames;
 
 namespace GooglePlayGames.BasicApi {
     public class DummyClient : IPlayGamesClient {
@@ -69,15 +70,25 @@ namespace GooglePlayGames.BasicApi {
 
         public void ShowAchievementsUI() {}
         public void ShowLeaderboardUI(string lbId) {}
+
+		#region CGJ
+        // Show player selection UI
+        public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers) {}
+        // Show Match Inbox UI
+        public void ShowMatchInboxUI() {}
+		// Set Client Callbaks for TurnBasedGame
+		public void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner ) {}
+		// Take a turn in turn based game
+		public void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant ) {}
+		// Return the TurnBasedMatchInfo for the launching Intent
+		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo() { return null; }
+   		#endregion
+		
         public void SubmitScore(string lbId, long score, Action<bool> callback) {
             if (callback != null) {
                 callback.Invoke(false);
             }
         }
-
-        
-        // Show player selection UI
-        public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers) {}
 
         public void LoadState(int slot, OnStateLoadedListener listener) {
             if (listener != null) {
@@ -88,6 +99,6 @@ namespace GooglePlayGames.BasicApi {
         public void UpdateState(int slot, byte[] data, OnStateLoadedListener listener) {}
 
         public void SetCloudCacheEncrypter(BufferEncrypter encrypter) {}
-    }
+	 }
 }
 
