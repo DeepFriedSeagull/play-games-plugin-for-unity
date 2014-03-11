@@ -45,6 +45,10 @@ System requirements:
 Note: This first release does not yet include support for multiplayer, listing friends, 
 interactive posts, raw data access, etc.
 
+## Upgrading
+
+If you have already integrated your project with a previous version of the plugin and wish to upgrade to a new version, please refer to the [upgrade instructions](https://github.com/playgameservices/play-games-plugin-for-unity/blob/master/UPGRADING.txt).
+
 ## Configure Your Game
 
 To use the plugin, you must first [configure your 
@@ -651,5 +655,5 @@ The plugin was developed and is currently maintained by [Bruno Oliveira](https:/
 This section lists people who have contributed to this project by writing code, improving documentation or fixing bugs.
 
 * [Dgizusse](https://github.com/Dgizusse) for figuring out that setting JAVA_HOME is necessary on Windows.
-
+* [antonlicht](https://github.com/antonlicht) for fixing a bug with the parameter type of showErrorDialog on the support library.
 

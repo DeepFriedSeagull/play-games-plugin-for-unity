@@ -25,8 +25,8 @@ using System.Text;
 
 namespace GooglePlayGames.Android {
     public class AndroidClient : IPlayGamesClient {
-        GameHelperManager mGameHelperManager = null;
-
+        GameHelperManager mGHManager = null;
+        
         // In what state of the authentication process are we?
         enum AuthState {
             NoAuth, // not authenticated
@@ -55,6 +55,9 @@ namespace GooglePlayGames.Android {
         // of connecting and can't take API calls. So, if that happens, we queue the
         // actions here and execute when we get onSignInSucceeded or onSignInFailed,.
         List<Action> mActionsPendingSignIn = new List<Action>();
+        
+        // Are we currently in the process of signing out?
+        private bool mSignOutInProgress = false;
 
         // Result code for child activities whose result we don't care about
         const int RC_SELECT_PLAYERS = 9002;
@@ -68,24 +71,22 @@ namespace GooglePlayGames.Android {
 		// Turned base game creation listener
 		ITurnBasedMatchListerner mTurnBasedListener;
 
-		// Returned the tbmp match received through an invitation notification
-		TurnBasedMatchInfo m_turnBasedMatchInfo;
-
         public AndroidClient() {
             RunOnUiThread(() => {
                 Logger.d("Initializing Android Client.");
                 Logger.d("Creating GameHelperManager to manage GameHelper.");
-                mGameHelperManager = new GameHelperManager(this);
+                mGHManager = new GameHelperManager(this);
                 Logger.d("GameHelper manager is set up.");
             });
-            // now we wait for the result of the silent auth, which will trigger
+            // now we wait for the result of the initial auth, which will trigger
             // a call to either OnSignInSucceeded or OnSignInFailed
         }
 
         // called from game thread
         public void Authenticate(System.Action<bool> callback, bool silent) {
             if (mAuthState != AuthState.NoAuth) {
-                Logger.w("Authenticate() called while an authentication process was active. " + mAuthState);
+                Logger.w("Authenticate() called while an authentication process was active. " + 
+                        mAuthState);
                 mAuthCallback = callback;
                 return;
             }
@@ -98,7 +99,7 @@ namespace GooglePlayGames.Android {
             mSilentAuth = silent;
             Logger.d("AUTH: starting auth process, silent=" + mSilentAuth);
             RunOnUiThread(() => {
-                switch (mGameHelperManager.State) {
+                switch (mGHManager.State) {
                     case GameHelperManager.ConnectionState.Connected:
                         Logger.d("AUTH: already connected! Proceeding to achievement load phase.");
                         mAuthCallback = callback;
@@ -119,7 +120,7 @@ namespace GooglePlayGames.Android {
                         } else {
                             Logger.d("AUTH: not connected and silent=false, so starting flow.");
                             mAuthState = AuthState.InProgress;
-                            mGameHelperManager.BeginUserInitiatedSignIn();
+                            mGHManager.BeginUserInitiatedSignIn();
                             // we'll do the right thing in OnSignInSucceeded/Failed
                         }
                         break;
@@ -130,12 +131,12 @@ namespace GooglePlayGames.Android {
         // call from UI thread only!
         private void DoInitialAchievementLoad() {
             Logger.d("AUTH: Now performing initial achievement load...");
-            mAuthState = AuthState.LoadingAchs;
-            mGameHelperManager.GetGamesClient().Call("loadAchievements",
-                new OnAchievementsLoadedListenerProxy(this), false);
+            mAuthState = AuthState.LoadingAchs;            
+            mGHManager.CallGmsApiWithResult("games.Games", "Achievements", "load",
+                    new OnAchievementsLoadedResultProxy(this), false);
             Logger.d("AUTH: Initial achievement load call made.");
         }
-
+        
         // UI thread
         private void OnAchievementsLoaded(int statusCode, AndroidJavaObject buffer) {
             if (mAuthState == AuthState.LoadingAchs) {
@@ -160,66 +161,89 @@ namespace GooglePlayGames.Android {
 
         // UI thread
         private void InvokeAuthCallback(bool success) {
-            if (mAuthCallback == null) return;
+            if (mAuthCallback == null) 
+            {
+                Logger.w("InvokeAuthCallback invoke with an empty callback ");
+                return;
+            }
             Logger.d("AUTH: Calling auth callback: success=" + success);
             System.Action<bool> cb = mAuthCallback;
-            mAuthCallback = null;
+
+			// CJG: WIP: Setting null will cause problems with notifications
+			// Indeed notification can cause account switch, so we need to be aware 
+			// of loggin success so we need the cal back to be called on the onStart/onResume 
+            // mAuthCallback = null;
+
             PlayGamesHelperObject.RunOnGameThread(() => {
                 cb.Invoke(success);
             });
+
         }
 
         private void RetrieveUserInfo() {
-            AndroidJavaObject gamesClient = mGameHelperManager.GetGamesClient();
+            Logger.d("Attempting to retrieve player info.");
+            
+            using (AndroidJavaObject playerObj = mGHManager.CallGmsApi<AndroidJavaObject>(
+                    "games.Games", "Players", "getCurrentPlayer")) {
+        
 
-            if (mUserId == null) {
-                Logger.d("Attempting to retrieve player ID.");
-                mUserId = gamesClient.Call<string>("getCurrentPlayerId");
+                mUserId = playerObj.Call<string>("getPlayerId");
                 Logger.d("Player ID: " + mUserId);
-            }
 
-            if (mUserDisplayName == null) {
-                Logger.d("Attempting to retrieve display name.");
-                AndroidJavaObject playerObj = gamesClient.Call<AndroidJavaObject>("getCurrentPlayer");
-                if (playerObj != null) {
-                    mUserDisplayName = playerObj.Call<string>("getDisplayName");
-                    Logger.d("Player display name: " + mUserDisplayName);
-                } else {
-                    Logger.w("Warning: GamesClient.getCurrentPlayer returned null.");
-                }
+
+                mUserDisplayName = playerObj.Call<string>("getDisplayName");
+                Logger.d("Player display name: " + mUserDisplayName);
             }
+        }
+
+        private void ResetUserInfo() {
+            mUserId = null;
+            mUserDisplayName = null;
         }
 
         // called (on the UI thread) by GameHelperManager to notify us that sign in succeeded
         internal void OnSignInSucceeded() {
             Logger.d("AndroidClient got OnSignInSucceeded.");
-            RetrieveUserInfo();
 
             if (mAuthState == AuthState.AuthPending || mAuthState == AuthState.InProgress) {
                 Logger.d("AUTH: Auth succeeded. Proceeding to achievement loading.");
+                
+                RetrieveUserInfo();
                 DoInitialAchievementLoad();
             } else if (mAuthState == AuthState.LoadingAchs) {
                 Logger.w("AUTH: Got OnSignInSucceeded() while in achievement loading phase (unexpected).");
                 Logger.w("AUTH: Trying to fix by issuing a new achievement load call.");
+                
+                RetrieveUserInfo();
                 DoInitialAchievementLoad();
             } else {
                 // we will hit this case during the normal lifecycle (for example, Activity
                 // was brought to the foreground and sign in has succeeded even though
                 // we were not in an auth flow).
-                Logger.d("Normal lifecycle OnSignInSucceeded received.");
+                Logger.d("Normal lifecycle OnSignInSucceeded received. AuthState = " + mAuthState.ToString() );
 
-				//CJG
+                // CJG Checking we are connected to same user
+				// Notification can switch account
+                using (AndroidJavaObject playerObj = mGHManager.CallGmsApi<AndroidJavaObject>(
+                    "games.Games", "Players", "getCurrentPlayer"))
+                {
+                    if (playerObj.Call<string>("getPlayerId") != mUserId )
+                    {
+                        // Workaround: setting the mAutState to InProgress and Calling OnSignInSucceeded again.
+                        
+                        Logger.d("Not the same player connected!! Fixing it by calling OnSignInSucceeded again.");
+                        mAuthState = AuthState.InProgress;
+                        OnSignInSucceeded();
+                    }
+                }
+
+
+				// CJG TODO: This local var is horrible
                 if ( m_pendingTBMGCreation == true )
                 {
                     m_pendingTBMGCreation = false;
 					CreateTurnBasedMatch();
                 }
-
-				AndroidJavaObject turnBasedMatch = mGameHelperManager.GetGamesClient().Call<AndroidJavaObject>( "getTurnBasedMatch" );
-				if (turnBasedMatch.GetRawObject().ToInt32() != 0)
-				{
-					m_turnBasedMatchInfo = new TurnBasedMatchInfo (turnBasedMatch );
-				}
 
                 RunPendingActions();
 
@@ -229,6 +253,7 @@ namespace GooglePlayGames.Android {
         // called (on the UI thread) by GameHelperManager to notify us that sign in failed
         internal void OnSignInFailed() {
             Logger.d("AndroidClient got OnSignInFailed.");
+            ResetUserInfo();
             if (mAuthState == AuthState.AuthPending) {
                 // we have yet to start the auth flow
                 if (mSilentAuth) {
@@ -238,7 +263,7 @@ namespace GooglePlayGames.Android {
                 } else {
                     Logger.d("AUTH: Auth flow was pending and silent=false, so doing noisy auth.");
                     mAuthState = AuthState.InProgress;
-                    mGameHelperManager.BeginUserInitiatedSignIn();
+                    mGHManager.BeginUserInitiatedSignIn();
                 }
             } else if (mAuthState == AuthState.InProgress) {
                 // authentication was in progress, but failed: notify callback
@@ -246,7 +271,7 @@ namespace GooglePlayGames.Android {
                 mAuthState = AuthState.NoAuth;
                 InvokeAuthCallback(false);
             } else if (mAuthState == AuthState.LoadingAchs) {
-                // we were loading achievements and got disconnected: notify callback
+                // we were loading achievements and got disconnected: notOnTurnBasedMatchInitiatedResultProxyify callback
                 Logger.d("AUTH: FAILED (while loading achievements).");
                 mAuthState = AuthState.NoAuth;
                 InvokeAuthCallback(false);
@@ -262,10 +287,11 @@ namespace GooglePlayGames.Android {
             }
         }
 
+        // Called from Game Thread
 		// Returned the turn base match info
-		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo()
+		public TurnBasedMatchInfo GetTurnBasedMatch()
 		{
-			return m_turnBasedMatchInfo;
+            return mGHManager.GetTurnBasedMatch();
 		}
 
 
@@ -286,46 +312,54 @@ namespace GooglePlayGames.Android {
 
         // runs on the game thread
         public bool IsAuthenticated() {
-            return mAuthState == AuthState.Done;
+            return mAuthState == AuthState.Done && !mSignOutInProgress;
         }
         
         public void SignOut() {
             Logger.d("AndroidClient.SignOut");
+            ResetUserInfo();
+            mSignOutInProgress = true;
             RunWhenConnectionStable(() => {
                 Logger.d("Calling GHM.SignOut");
-                mGameHelperManager.SignOut();
+                mGHManager.SignOut();
                 mAuthState = AuthState.NoAuth;
+                mSignOutInProgress = false;
                 Logger.d("Now signed out.");
             });
         }
-
+        
         // Returns the game's Activity
         internal AndroidJavaObject GetActivity() {
-            AndroidJavaClass jc = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-            if (jc == null) {
-                throw new System.Exception("Could not get class com.unity3d.player.UnityPlayer.");
+            using (AndroidJavaClass jc = new AndroidJavaClass("com.unity3d.player.UnityPlayer")) {
+                return jc.GetStatic<AndroidJavaObject>("currentActivity");
             }
-            AndroidJavaObject activity = jc.GetStatic<AndroidJavaObject>("currentActivity");
-            if (activity == null) {
-                throw new System.Exception("Could not get class current activity from UnityPlayer.");
-            }
-            return activity;
         }
 
         internal void RunOnUiThread(System.Action action) {
-            GetActivity().Call("runOnUiThread", new AndroidJavaRunnable(action));
+            using (AndroidJavaObject activity = GetActivity()) {
+                activity.Call("runOnUiThread", new AndroidJavaRunnable(action));
+            }
         }
 
-        private class OnAchievementsLoadedListenerProxy : AndroidJavaProxy {
+        private class OnAchievementsLoadedResultProxy : AndroidJavaProxy {
             AndroidClient mOwner;
 
-            internal OnAchievementsLoadedListenerProxy(AndroidClient c) :
-                    base("com.google.android.gms.games.achievement.OnAchievementsLoadedListener") {
+            internal OnAchievementsLoadedResultProxy(AndroidClient c) :
+                    base(JavaUtil.ResultCallbackClass) {
                 mOwner = c;
             }
 
-            public void onAchievementsLoaded (int statusCode, AndroidJavaObject buffer) {
-                mOwner.OnAchievementsLoaded(statusCode, buffer);
+            public void onResult(AndroidJavaObject result) {
+                Logger.d("OnAchievementsLoadedResultProxy invoked");
+                Logger.d("    result=" + result);
+                int statusCode = JavaUtil.GetStatusCode(result);
+                AndroidJavaObject achBuffer = JavaUtil.CallNullSafeObjectMethod(result, 
+                        "getAchievements");
+                mOwner.OnAchievementsLoaded(statusCode, achBuffer);
+                if (achBuffer != null) {
+                    achBuffer.Call("close");
+                    achBuffer.Dispose();
+                }
             }
         }
 
@@ -336,7 +370,7 @@ namespace GooglePlayGames.Android {
         // or have definitely failed to sign in.
         private void RunWhenConnectionStable(Action a) {
             RunOnUiThread(() => {
-                if (mGameHelperManager.State == GameHelperManager.ConnectionState.Connecting) {
+                if (mGHManager.State == GameHelperManager.ConnectionState.Connecting) {
                     // we're in the middle of establishing a connection, so we'll
                     // have to queue this action to execute once the connection is
                     // established (or fails)
@@ -349,29 +383,15 @@ namespace GooglePlayGames.Android {
             });
         }
 
-        private enum ClientApi { Games, AppState };
-        private void CallGamesClientApi(string desc,
-                Action<AndroidJavaObject> call, Action<bool> callback) {
-            CallClientApi(ClientApi.Games, desc, call, callback);
-        }
-
-        private void CallAppStateClientApi(string desc,
-                Action<AndroidJavaObject> call, Action<bool> callback) {
-            CallClientApi(ClientApi.AppState, desc, call, callback);
-        }
-
-        private void CallClientApi(ClientApi api, string desc,
-                Action<AndroidJavaObject> call, Action<bool> callback) {
+        private void CallClientApi(string desc, Action call, Action<bool> callback) {
             Logger.d("Requesting API call: " + desc);
             RunWhenConnectionStable(() => {
                 // we got a stable connection state to the games service
                 // (either connected or disconnected, but not in progress).
-                if (mGameHelperManager.IsConnected()) {
+                if (mGHManager.IsConnected()) {
                     // we are connected, so make the API call
                     Logger.d("Connected! Calling API: " + desc);
-                    call.Invoke(api == ClientApi.Games ?
-                            mGameHelperManager.GetGamesClient() :
-                            mGameHelperManager.GetAppStateClient());
+                    call.Invoke();
                     if (callback != null) {
                         PlayGamesHelperObject.RunOnGameThread(() => {
                             callback.Invoke(true);
@@ -412,9 +432,9 @@ namespace GooglePlayGames.Android {
                 return;
             }
 
-            CallGamesClientApi("unlock ach " + achId, (AndroidJavaObject c) => {
-                c.Call("unlockAchievement", achId);
-            },    callback);
+            CallClientApi("unlock ach " + achId, () => {
+                mGHManager.CallGmsApi("games.Games", "Achievements", "unlock", achId);
+            }, callback);
 
             // update local cache
             a = GetAchievement(achId);
@@ -435,9 +455,9 @@ namespace GooglePlayGames.Android {
                 return;
             }
 
-            CallGamesClientApi("reveal ach " + achId, (AndroidJavaObject c) => {
-                c.Call("revealAchievement", achId);
-            },    callback);
+            CallClientApi("reveal ach " + achId, () => {
+                mGHManager.CallGmsApi("games.Games", "Achievements", "reveal", achId);
+            }, callback);
 
             // update local cache
             a = GetAchievement(achId);
@@ -450,10 +470,12 @@ namespace GooglePlayGames.Android {
         // called from game thread
         public void IncrementAchievement(string achId, int steps, Action<bool> callback) {
             Logger.d("AndroidClient.IncrementAchievement: " + achId + ", steps " + steps);
-            CallGamesClientApi("increment ach " + achId + ", " + steps, (AndroidJavaObject c) => {
-                c.Call("incrementAchievement", achId, steps);
-            },    callback);
-
+            
+            CallClientApi("increment ach " + achId, () => {
+                mGHManager.CallGmsApi("games.Games", "Achievements", "increment",
+                        achId, steps);
+            }, callback);
+            
             // update local cache
             Achievement a = GetAchievement(achId);
             if (a != null) {
@@ -473,33 +495,45 @@ namespace GooglePlayGames.Android {
         public Achievement GetAchievement(string achId) {
             return mAchievementBank.GetAchievement(achId);
         }
-
+        
         // called from game thread
         public void ShowAchievementsUI() {
             Logger.d("AndroidClient.ShowAchievementsUI.");
-            CallGamesClientApi("show achievements ui", (AndroidJavaObject c) => {
-                AndroidJavaObject intent = c.Call<AndroidJavaObject>("getAchievementsIntent");
-                AndroidJavaObject activity = GetActivity();
-                Logger.d("About to show achievements UI with intent " + intent +
-                    ", activity " + activity);
-                if (intent != null && activity != null) {
-                    activity.Call("startActivityForResult", intent, RC_UNUSED);
+            CallClientApi("show achievements ui", () => {
+                using (AndroidJavaObject intent = mGHManager.CallGmsApi<AndroidJavaObject>(
+                        "games.Games", "Achievements", "getAchievementsIntent")) {
+                    using (AndroidJavaObject activity = GetActivity()) {
+                        Logger.d("About to show achievements UI with intent " + intent +
+                            ", activity " + activity);
+                        if (intent != null && activity != null) {
+                            activity.Call("startActivityForResult", intent, RC_UNUSED);
+                        }
+                    }
                 }
             }, null);
+        }
+        
+        // called from UI thread
+        private AndroidJavaObject GetLeaderboardIntent(string lbId) {
+            return (lbId == null) ?
+                mGHManager.CallGmsApi<AndroidJavaObject>(
+                    "games.Games", "Leaderboards", "getAllLeaderboardsIntent") :
+                mGHManager.CallGmsApi<AndroidJavaObject>(
+                    "games.Games", "Leaderboards", "getLeaderboardIntent", lbId);
         }
 
         // called from game thread
         public void ShowLeaderboardUI(string lbId) {
             Logger.d("AndroidClient.ShowLeaderboardUI, lb=" + (lbId == null ? "(all)" : lbId));
-            CallGamesClientApi("show LB ui", (AndroidJavaObject c) => {
-                AndroidJavaObject intent = (lbId == null) ?
-                        c.Call<AndroidJavaObject>("getAllLeaderboardsIntent") :
-                        c.Call<AndroidJavaObject>("getLeaderboardIntent", lbId);
-                AndroidJavaObject activity = GetActivity();
-                Logger.d("About to show LB UI with intent " + intent +
-                    ", activity " + activity);
-                if (intent != null && activity != null) {
-                    activity.Call("startActivityForResult", intent, RC_UNUSED);
+            CallClientApi("show LB ui", () => {
+                using (AndroidJavaObject intent = GetLeaderboardIntent(lbId)) {
+                    using (AndroidJavaObject activity = GetActivity()) {
+                        Logger.d("About to show LB UI with intent " + intent +
+                            ", activity " + activity);
+                        if (intent != null && activity != null) {
+                            activity.Call("startActivityForResult", intent, RC_UNUSED);
+                        }
+                    }
                 }
             }, null);
         }
@@ -508,39 +542,62 @@ namespace GooglePlayGames.Android {
 		{
 			mTurnBasedListener = listerner;
 		}
+        
+        // called from UI thread
+        private AndroidJavaObject getSelectOpponentsIntent(int minPlayers, int maxPlayers)
+        {
+            return mGHManager.CallGmsApi<AndroidJavaObject>(
+                "games.Games", "TurnBasedMultiplayer", "getSelectOpponentsIntent", minPlayers, maxPlayers, false);
+        }
 
         // called from game thread
         public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers)
         {  
             Logger.d("AndroidClient.ShowPlayerSelectionUI, " + minPlayers.ToString() + "- " + maxPlayers.ToString() );
 
-            CallGamesClientApi("show PlaySelection ui", (AndroidJavaObject c) =>
-                {
-                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getSelectPlayersIntent", minPlayers, maxPlayers, false);
-
-                    AndroidJavaObject activity = GetActivity();
-                    Logger.d("About to show PlayerSelection UI with intent " + intent + ", activity " + activity);
-                    if (intent != null && activity != null) {
-                        activity.Call("startActivityForResult", intent, RC_SELECT_PLAYERS);
+            CallClientApi("show PlaySelection ui", () => {
+                using (AndroidJavaObject intent = getSelectOpponentsIntent(minPlayers, maxPlayers) ) { 
+                        using (AndroidJavaObject activity = GetActivity() ) {
+                            Logger.d("About to show PlayerSelection UI with intent " + intent + ", activity " + activity);
+                            if (intent != null && activity != null) {
+                                activity.Call("startActivityForResult", intent, RC_SELECT_PLAYERS);
+                            }
+                        }
                     }
-                }, null);
+            }, null);
 
             m_pendingTBMGCreation = true;
         }
+
+        //From Game thread
+        public void GetPendingMatches( Action< List< TurnBasedMatchInfo > > callback)
+        {
+            CallClientApi("loadMatchesByStatus", () => 
+            {
+                int[] matchTurnStatuses = new int [] {1};
+                mGHManager.CallGmsApiWithResult("games.Games", "TurnBasedMultiplayer", "loadMatchesByStatus",
+                                                new LoadMatchesResultProxy (this, callback), matchTurnStatuses );
+            }, null );
+        }
         
 		// called from UI thread Only
-		public void CreateTurnBasedMatch()
+		private void CreateTurnBasedMatch()
 		{
 			Logger.d("AndroidClient.CreateTurnBasedMatch");
 
-			//AndroidJavaObject matchConfig = activity.Callt<AndroidJavaObject>("getPendingTurnBasedMatchConfig");
-
-			AndroidJavaObject activity = GetActivity();
-			AndroidJavaObject matchConfig = activity.Call<AndroidJavaObject>("getPendingTurnBasedMatchConfig");
-
-
-			mGameHelperManager.GetGamesClient().Call( "createTurnBasedMatch", new OnTurnBasedMatchInitiatedListenerProxy(this), matchConfig);
-
+            try
+            {
+    			using (AndroidJavaObject activity = GetActivity() ){
+                    using ( AndroidJavaObject matchConfig = activity.Call<AndroidJavaObject>("getPendingTurnBasedMatchConfig") ) {
+                        mGHManager.CallGmsApiWithResult( "games.Games", "TurnBasedMultiplayer", "createMatch",
+                                                new OnTurnBasedMatchInitiatedResultProxy(this), matchConfig);
+                    }
+                }
+            }
+            catch ( System.Exception e)
+            {
+                Debug.LogError( "CreateTurnBasedMatch: " + e.ToString() );  
+            }
 		}
 
 		// called from UI thread
@@ -563,8 +620,8 @@ namespace GooglePlayGames.Android {
 
 
 			// public void takeTurn (OnTurnBasedMatchUpdatedListener listener, String matchId, byte[] matchData, String pendingParticipantId)
-			mGameHelperManager.GetGamesClient().Call( "takeTurn", new OnTurnBasedMatchUpdatedListenerProxy( this ),
-			                                         turnBasedMatchInfo.Guid, initData, prendingPlayer );
+            mGHManager.CallGmsApiWithResult( "games.Games", "TurnBasedMultiplayer", "takeTurn", new OnTurnBasedMatchUpdatedResultProxy( this ),
+			                       turnBasedMatchInfo.Guid, initData, prendingPlayer );
 
 			
 			PlayGamesHelperObject.RunOnGameThread( () => {
@@ -577,61 +634,75 @@ namespace GooglePlayGames.Android {
 		public void OnTurnBasedMatchUpdated(int statusCode, AndroidJavaObject match)
 		{
 			Logger.d("AndroidClient.OnTurnBasedMatchUpdated");
-			TurnBasedMatchInfo turnBasedMatchInfo = new TurnBasedMatchInfo( match );
-			Debug.Log( turnBasedMatchInfo.ToString() );
+           
+            TurnBasedMatchInfo turnBasedMatchInfo = null;
 
-				
+            if (statusCode == GoogleStatusCode.STATUS_OK )
+            {
+                turnBasedMatchInfo = new TurnBasedMatchInfo( match );
+    			Debug.Log( turnBasedMatchInfo.ToString() );
+            }
+    				
 			PlayGamesHelperObject.RunOnGameThread( () => {
-				mTurnBasedListener.OnTurnBasedMatchUpdated(statusCode, turnBasedMatchInfo );
+                if ( mTurnBasedListener != null )
+                {
+				    mTurnBasedListener.OnTurnBasedMatchUpdated(statusCode, turnBasedMatchInfo );
+                }
+                else
+                {
+                    Debug.LogError( "TurnBasedListener is not set." );
+                }
+
 			} );
+            
 		}
 
 
 		// Called from the Game thread
 		public void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant ) 
 		{
-
-			CallGamesClientApi("TBMG_TakeTurn", (AndroidJavaObject c) => {
-				c.Call("takeTurn", new OnTurnBasedMatchUpdatedListenerProxy( this ),
+            CallClientApi("TBMG_TakeTurn", () => {
+                mGHManager.CallGmsApiWithResult( "games.Games", "TurnBasedMultiplayer", "takeTurn", new OnTurnBasedMatchUpdatedResultProxy( this ),
 				       matchId, newData, pendingParticipant );
 			}, null );
-
 
 		}
 
 
         // called from game thread
-        public void ShowMatchInboxUI()
+        public void ShowMatchInboxUI( Action<TurnBasedMatchInfo> callback )
         {
             Logger.d("AndroidClient.ShowMatchInboxUI");
+
+            GetActivity().Call("SetActivityResultListener", new ActivityResultListenerProxy( callback ) );
             
-            CallGamesClientApi("show match inbox ui", (AndroidJavaObject c) =>
-                {
-                    AndroidJavaObject intent = c.Call<AndroidJavaObject>("getMatchInboxIntent");
-                    
-                    AndroidJavaObject activity = GetActivity();
-                    Logger.d("About to show ShowMatchInbox UI with intent " + intent + ", activity " + activity);
-                    if (intent != null && activity != null) {
-                    activity.Call("startActivityForResult", intent, RC_MATCH_INBOX);
-                    }
-                }, null);
+            CallClientApi("show match inbox ui", () =>  {
+                AndroidJavaObject intent = mGHManager.CallGmsApi<AndroidJavaObject>( "games.Games", "TurnBasedMultiplayer", "getInboxIntent");
+                AndroidJavaObject activity = GetActivity();
+                Logger.d("About to show ShowMatchInbox UI with intent " + intent + ", activity " + activity);
+                if (intent != null && activity != null) {
+                activity.Call("startActivityForResult", intent, RC_MATCH_INBOX);
+                }
+            }, null);
         }
 
 
         // called from game thread
         public void SubmitScore(string lbId, long score, Action<bool> callback) {
             Logger.d("AndroidClient.SubmitScore, lb=" + lbId + ", score=" + score);
-            CallGamesClientApi("submit score " + score + ", lb " + lbId, (AndroidJavaObject c) => {
-                c.Call("submitScore", lbId, score);
+            CallClientApi("submit score " + score + ", lb " + lbId, () => {
+                mGHManager.CallGmsApi("games.Games", "Leaderboards", 
+                        "submitScore", lbId, score);
             }, callback);
         }
 
         // called from game thread
         public void LoadState(int slot, OnStateLoadedListener listener) {
             Logger.d("AndroidClient.LoadState, slot=" + slot);
-            CallAppStateClientApi("load state slot=" + slot, (AndroidJavaObject c) => {
-                OnStateLoadedProxy proxy = new OnStateLoadedProxy(this, listener);
-                c.Call("loadState", proxy, slot);
+            CallClientApi("load state slot=" + slot, () => {
+                OnStateResultProxy proxy = new OnStateResultProxy(this, listener);
+                mGHManager.CallGmsApiWithResult("appstate.AppStateManager", null, "load", 
+                        proxy, slot);
             }, null);
         }
 
@@ -641,9 +712,9 @@ namespace GooglePlayGames.Android {
                 OnStateLoadedListener listener) {
             Logger.d(string.Format("AndroidClient.ResolveState, slot={0}, ver={1}, " +
                 "data={2}", slot, resolvedVersion, resolvedData));
-            CallAppStateClientApi("resolve state slot=" + slot, (AndroidJavaObject c) => {
-                c.Call("resolveState", new OnStateLoadedProxy(this, listener), slot,
-                    resolvedVersion, resolvedData);
+            CallClientApi("resolve state slot=" + slot, () => {
+                mGHManager.CallGmsApiWithResult("appstate.AppStateManager", null, "resolve",
+                new OnStateResultProxy(this, listener), slot, resolvedVersion, resolvedData);
             }, null);
         }
 
@@ -651,12 +722,12 @@ namespace GooglePlayGames.Android {
         public void UpdateState(int slot, byte[] data, OnStateLoadedListener listener) {
             Logger.d(string.Format("AndroidClient.UpdateState, slot={0}, data={1}",
                 slot, Logger.describe(data)));
-            CallAppStateClientApi("update state, slot=" + slot, (AndroidJavaObject c) => {
-                c.Call("updateState", slot, data);
+            CallClientApi("update state, slot=" + slot, () => {
+                mGHManager.CallGmsApi("appstate.AppStateManager", null, "update", slot, data);
             }, null);
 
-            // On Android, cloud writes always succeed (because, at worst, they get cached
-            // locally to send to the cloud later)
+            // On Android, cloud writes always succeeds (because, in the worst case,
+            // data gets cached locally to send to the cloud later)
             listener.OnStateSaved(true, slot);
         }
 

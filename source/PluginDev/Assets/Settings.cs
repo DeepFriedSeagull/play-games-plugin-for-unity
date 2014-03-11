@@ -26,18 +26,17 @@ public class Settings  {
 
     // This is the achievement that we REVEAL
     public const string AchievementToReveal = 
-        "PLACEHOLDER - PUT YOUR ACHIEVEMENT ID HERE"; // <GPGSID>
+        "CgkI7ObSmMwdEAIQCA"; // <GPGSID>
 
     // This is the achievement that we UNLOCK
     public const string AchievementToUnlock =
-        "PLACEHOLDER - PUT YOUR ACHIEVEMENT ID HERE"; // <GPGSID>
+        "CgkI7ObSmMwdEAIQBQ"; // <GPGSID>
 
     // This is the achievement that we INCREMENT
     public const string AchievementToIncrement =
-        "PLACEHOLDER - PUT YOUR ACHIEVEMENT ID HERE"; // <GPGSID>
+        "CgkI7ObSmMwdEAIQAw"; // <GPGSID>
 
     // This is the leaderboard to which we post
     public const string Leaderboard =
-        "PLACEHOLDER - PUT YOUR LEADERBOARD ID HERE"; // <GPGSID>
+        "CgkI7ObSmMwdEAIQBg"; // <GPGSID>
 }
-

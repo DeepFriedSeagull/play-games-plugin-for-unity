@@ -18,10 +18,11 @@
 using System;
 using UnityEngine;
 using GooglePlayGames.OurUtils;
+using System.Collections.Generic;
 
 namespace GooglePlayGames.Android {
     internal class GameHelperManager {
-        const string SignInHelperManagerClass = "com.cedco.six.player.SignInHelperManager";
+        const string SignInHelperManagerClass = "com.google.example.games.pluginsupport.SignInHelperManager";
         const string BaseGameUtilsPkg = "com.google.example.games.basegameutils";
         const string GameHelperClass = BaseGameUtilsPkg + ".GameHelper";
         const string GameHelperListenerClass = GameHelperClass + "$GameHelperListener";
@@ -46,23 +47,59 @@ namespace GooglePlayGames.Android {
 
             // create GameHelper
             Logger.d("GHM creating GameHelper.");
-            mGameHelper = new AndroidJavaObject(GameHelperClass, mAndroidClient.GetActivity());
-            if (mGameHelper == null) {
+            int flags = JavaConsts.GAMEHELPER_CLIENT_ALL;
+            Logger.d("GHM calling GameHelper constructor with flags=" + flags);
+
+		
+							
+//            mGameHelper = new AndroidJavaObject(GameHelperClass, mAndroidClient.GetActivity(), 
+//                    flags);
+//            
+			// Let the GameHelper Creation to the Activity.
+            mGameHelper = mAndroidClient.GetActivity().Call<AndroidJavaObject>("GetGameHelper");
+            
+            if (mGameHelper == null) 
+            {
                 throw new System.Exception("Failed to create GameHelper.");
             }
 
             // set up the GameHelper
             Logger.d("GHM setting up GameHelper.");
             mGameHelper.Call("enableDebugLog", Logger.DebugLogEnabled, "GameHelper");
-            int flags = mGameHelper.GetStatic<int>("CLIENT_ALL");
-            Logger.d("GHM client request flags: " + flags);
+            
+            
             GameHelperListener listenerProxy = new GameHelperListener(this, ORIGIN_MAIN_ACTIVITY);
-            Logger.d("GHM calling GameHelper.setRequestedClients, " + flags);
-            mGameHelper.Call("setRequestedClients", flags);
+            
+            // CJG TO BE IGNORED now
+            // IMPORTANT: we need to tweak the default behavior of GameHelper because 
+            // it should never attempt to automatically start the 
+            // sign in flow, because this must be done by the SignInActivity! This
+            // is why we call setMaxAutoSignInAttempts(0). This is important because if THIS
+            // GameHelper were to attempt the sign-in flow, nothing would work, because
+            // it needs onActivityResult to be hooked up, and we have no way to access
+            // onActivityResult on the Unity player activity. This is why we use a separate
+            // Activity for the sign in flow.
+            
+            Logger.d("GHM Setting GameHelper options.");
+            mGameHelper.Call("setMaxAutoSignInAttempts", 1); // CJG 1
+
+            AndroidJavaClass gameOptionsClass = JavaUtil.GetGmsClass("games.Games$GamesOptions");
+            AndroidJavaObject builder = gameOptionsClass.CallStatic<AndroidJavaObject>("builder");
+            AndroidJavaObject tmp = builder.Call<AndroidJavaObject>("setSdkVariant", 
+                    JavaConsts.SDK_VARIANT);
+            AndroidJavaObject options = builder.Call<AndroidJavaObject>("build");
+            mGameHelper.Call("setGamesApiOptions", options);
+            options.Dispose(); options = null;
+            tmp.Dispose(); tmp = null;
+            builder.Dispose(); builder = null;
+            
+
             Logger.d("GHM calling GameHelper.setup");
             mGameHelper.Call("setup", listenerProxy);
-
+            Logger.d("GHM: GameHelper setup done.");
+          
             // set up callbacks so we're informed of pause/unpause events
+            Logger.d("GHM Setting up lifecycle.");
             PlayGamesHelperObject.SetPauseCallback((bool paused) => {
                 if (paused) {
                     OnPause();
@@ -71,8 +108,8 @@ namespace GooglePlayGames.Android {
                 }
             });
 
-            // start silent auth
-            Logger.d("GHM calling GameHelper.onStart to try silent auth.");
+            // start initial auth
+            Logger.d("GHM calling GameHelper.onStart to try initial auth.");
             mConnectionState = ConnectionState.Connecting;
             mGameHelper.Call("onStart", mAndroidClient.GetActivity());
         }
@@ -92,6 +129,16 @@ namespace GooglePlayGames.Android {
         void OnSignInFailed(int origin) {
             Logger.d("GHM got onSignInFailed, origin " + origin + ", notifying AndroidClient.");
             mConnectionState = ConnectionState.Disconnected;
+            
+            // if the origin is the Sign In Helper activity, check if there's an error to show
+            if (origin == ORIGIN_SIGN_IN_HELPER_ACTIVITY) {
+                Logger.d("GHM got onSignInFailed from Sign In Helper. Showing error message.");
+                using (AndroidJavaClass klass = new AndroidJavaClass(SignInHelperManagerClass)) {
+                    klass.CallStatic("showErrorDialog", mAndroidClient.GetActivity());
+                }
+                Logger.d("Error message shown.");
+            }
+            
             mAndroidClient.OnSignInFailed();
         }
 
@@ -112,21 +159,26 @@ namespace GooglePlayGames.Android {
         internal void BeginUserInitiatedSignIn() {
             Logger.d("GHM Starting user-initiated sign in.");
             mConnectionState = ConnectionState.Connecting;
-            AndroidJavaClass c = new AndroidJavaClass(SignInHelperManagerClass);
-            c.CallStatic("launchSignIn", mAndroidClient.GetActivity(),
-                    new GameHelperListener(this, ORIGIN_SIGN_IN_HELPER_ACTIVITY));
+			// CJG: not using SignInHelperManagerClass,
+			// Calling directly the beginUserInitiatedSignIn method
+
+//            AndroidJavaClass c = new AndroidJavaClass(SignInHelperManagerClass);
+//            Logger.d("GHM launching sign-in Activity via SignInHelperManager.launchSignIn");
+//            c.CallStatic("launchSignIn", mAndroidClient.GetActivity(),
+//                    new GameHelperListener(this, ORIGIN_SIGN_IN_HELPER_ACTIVITY),
+//                    Logger.DebugLogEnabled);
+            
+            mGameHelper.Call("beginUserInitiatedSignIn");
+
+
         }
 
-        public AndroidJavaObject GetGamesClient() {
-            return mGameHelper.Call<AndroidJavaObject>("getGamesClient");
-        }
-
-        public AndroidJavaObject GetAppStateClient() {
-            return mGameHelper.Call<AndroidJavaObject>("getAppStateClient");
+        public AndroidJavaObject GetApiClient() {
+            return mGameHelper.Call<AndroidJavaObject>("getApiClient");
         }
 
         public bool IsConnected() {
-            return GetGamesClient().Call<bool>("isConnected");
+            return mGameHelper.Call<bool>("isSignedIn");
         }
         
         public void SignOut() {
@@ -136,6 +188,30 @@ namespace GooglePlayGames.Android {
             }
             mGameHelper.Call("signOut");
             mConnectionState = ConnectionState.Disconnected;
+        }
+
+        // CJG
+        public TurnBasedMatchInfo GetTurnBasedMatch()
+        {
+            Logger.d("GHM GetTurnBasedMatch");
+            return RetriveGetTurnBasedMatch();
+        }
+
+        private TurnBasedMatchInfo RetriveGetTurnBasedMatch()
+        {
+            Logger.d("GHM RetriveGetTurnBasedMatch");
+            try
+            {
+                using (AndroidJavaObject turnBasedMatch = mGameHelper.Call<AndroidJavaObject>( "getTurnBasedMatch" ) ) {
+                    Logger.d("GHM GetTurnBasedMatch, GET Succeed");
+                    return new TurnBasedMatchInfo (turnBasedMatch );
+                }
+            }
+            catch( System.Exception )
+            {
+                Logger.d("GHM return null");
+                return null;
+            }
         }
 
         // Proxy for GameHelperListener
@@ -157,6 +233,48 @@ namespace GooglePlayGames.Android {
                 Logger.d("GHM/GameHelperListener got onSignInSucceeded, origin " +
                         mOrigin + ", notifying GHM.");
                 mContainer.OnSignInSucceeded(mOrigin);
+            }
+        }
+        
+        private object[] makeGmsCallArgs(object[] args) {
+            object[] fullArgs = new object[args.Length + 1];
+            int i;
+            fullArgs[0] = GetApiClient();
+            for (i = 1; i < fullArgs.Length; i++) {
+                fullArgs[i] = args[i - 1];
+            }
+            return fullArgs;
+        }
+        
+        public ReturnType CallGmsApi<ReturnType>(string className, string fieldName,
+                string methodName, params object[] args) {
+            object[] fullArgs = makeGmsCallArgs(args);
+            
+            if (fieldName != null) {
+                return JavaUtil.GetGmsField(className, fieldName).Call<ReturnType>(methodName, 
+                        fullArgs);
+            } else {
+                return JavaUtil.GetGmsClass(className).CallStatic<ReturnType>(methodName, fullArgs);
+            }
+        }
+        
+        public void CallGmsApi(string className, string fieldName, string methodName, 
+                params object[] args) {
+            object[] fullArgs = makeGmsCallArgs(args);
+            
+            if (fieldName != null) {
+                JavaUtil.GetGmsField(className, fieldName).Call(methodName, fullArgs);
+            } else {
+                JavaUtil.GetGmsClass(className).CallStatic(methodName, fullArgs);
+            }
+        }
+        
+        public void CallGmsApiWithResult(string className, string fieldName,
+                string methodName, AndroidJavaProxy callbackProxy, params object[] args) {
+            
+            using (AndroidJavaObject pendingResult = CallGmsApi<AndroidJavaObject>(className, 
+                    fieldName, methodName, args)) {
+                pendingResult.Call("setResultCallback", callbackProxy);
             }
         }
     }

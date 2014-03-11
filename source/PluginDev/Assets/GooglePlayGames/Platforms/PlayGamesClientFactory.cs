@@ -21,9 +21,15 @@ using GooglePlayGames.BasicApi;
 
 namespace GooglePlayGames {
     internal class PlayGamesClientFactory {
+        
+        static IPlayGamesClient mCurrentClient = null;
         internal static IPlayGamesClient GetPlatformPlayGamesClient() {
 #if UNITY_ANDROID
-            return new GooglePlayGames.Android.AndroidClient();
+            if ( mCurrentClient == null )
+            {
+                mCurrentClient = new GooglePlayGames.Android.AndroidClient();
+            }
+            return mCurrentClient;
 #elif UNITY_IPHONE
             return new GooglePlayGames.IOS.IOSClient();
 #else

@@ -88,13 +88,15 @@ namespace GooglePlayGames.BasicApi {
 		void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner );
 
         // Show the Match Inbox UI
-        void ShowMatchInboxUI();
+        void ShowMatchInboxUI(Action<TurnBasedMatchInfo> callback);
 
 		// Take turn in a Turn Based Match Game
 		void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant );
         
 		// Return the TurnBasedMatchInfo for the launching Intent
-		TurnBasedMatchInfo GetIntentTurnBasedMatchInfo();
+		TurnBasedMatchInfo GetTurnBasedMatch();
+
+        void GetPendingMatches( Action< List< TurnBasedMatchInfo > > callback);
 
 		// Report a score to given leaderboard
         void SubmitScore(string lbId, long score, Action<bool> callback);

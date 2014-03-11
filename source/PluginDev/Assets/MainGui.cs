@@ -16,23 +16,37 @@
 
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine.SocialPlatforms;
 using System;
 using GooglePlayGames;
 
-public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedListener {
+public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedListener,
+    GooglePlayGames.BasicApi.ITurnBasedMatchListerner {
+
     const int Margin = 20, Spacing = 10;
-    const float FontSizeFactor = 50;
+    const float FontSizeFactor = 30;
     const int GridCols = 2;
-    const int GridRows = 8;
+    const int GridRows = 10;
 
     public GUISkin GuiSkin;
 
     bool mStandby = false;
     string mStandbyMessage = "";
     string mStatus = "Ready.";
+    string mMatchStatus = "";
+    TurnBasedMatchInfo mPendingMatch;
 
     bool mHadCloudConflict = false;
+
+    void Start()
+    {
+
+        PlayGamesPlatform.Activate();
+
+        Debug.Log("Starting authentication");
+        DoAuthenticate();
+    }
 
     Rect CalcGrid(int col, int row) {
         return CalcGrid(col, row, 1, 1);
@@ -56,13 +70,28 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
     }
 
     void DrawStatus() {
-        GUI.Label(CalcGrid(0, 7, 2, 1), mStatus);
+        GUI.Label(CalcGrid(0, 8, 2, 1), mStatus);
     }
+    void DrawMatchStatus() {
+        GUI.Label(CalcGrid(0, 9, 2, 1), mMatchStatus);
+    }
+
+    /*
+    void OnApplicationPause(bool pauseStatus)
+    {
+        Debug(
+        if(
+
+    }
+    */
 
     void ShowNotAuthUi() {
         DrawTitle();
         DrawStatus();
-        if (GUI.Button(CalcGrid(1,1), "Authenticate")) {
+        DrawMatchStatus();
+
+        if (GUI.Button(CalcGrid(1,1), "Authenticate")) 
+        {
             DoAuthenticate();
         }
     }
@@ -70,6 +99,7 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
     void ShowRegularUi() {
         DrawTitle();
         DrawStatus();
+        DrawMatchStatus();
 
         if (GUI.Button(CalcGrid(0,1), "Ach Reveal")) {
             DoAchievementReveal();
@@ -99,13 +129,46 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
             DoSignOut();
         }
 
-        
         if (GUI.Button(CalcGrid(0,6), "Create TBMG")) 
         {
-            DoTurnBasedMultiplayerGame();
+            DoCreateTurnBasedMultiplayerGame();
+        }
+        GUI.enabled = (mPendingMatch != null && mPendingMatch.IsPendingParticipantLoggedInPlayer() );
+        if (GUI.Button(CalcGrid(1,6), "Take Turn")) 
+        {
+            DoTakeTurn();
+        }
+        GUI.enabled = true;
+
+        if (GUI.Button(CalcGrid(0,7), "Test") )
+        {
+            using (AndroidJavaClass player = new AndroidJavaClass("com.unity3d.player.UnityPlayer")) {
+                using (AndroidJavaObject activity = player.GetStatic<AndroidJavaObject>("currentActivity") ) {
+                    Debug.Log("1");
+                    string testNotEmpty = activity.Call<string>("TestStringNotEmpty");
+                    Debug.Log("2");
+                    Debug.Log(testNotEmpty);
+
+                    try
+                    {
+                        AndroidJavaObject testEmpty = activity.Call<AndroidJavaObject>("TestStringEmpty");
+                        Debug.Log(testEmpty.ToString() );
+
+                    }
+                    catch ( AndroidJavaException e) 
+                    {
+                        Debug.LogError( "AndroidJavaException :"+ e.Message );
+                    }
+                    catch ( System.Exception e)
+                    {
+                        Debug.LogError( "Type :"+ e.GetType().ToString() + "Message :" + e.Message );
+                    }
+                    Debug.Log("3");
+                }
+            }
         }
 
-        if (GUI.Button(CalcGrid(1,6), "Invitation Inbox") )
+        if (GUI.Button(CalcGrid(1,7), "Invitation Inbox") )
         {
             DoShowMatchInbox();
         }
@@ -133,6 +196,8 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         } else if (Social.localUser.authenticated) {
             ShowRegularUi();
         } else {
+            mStatus = "";
+            mMatchStatus = "";
             ShowNotAuthUi();
         }
     }
@@ -150,24 +215,70 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         SetStandBy("Authenticating...");
 
         PlayGamesPlatform.DebugLogEnabled = true;
-        PlayGamesPlatform.Activate();
+
         Social.localUser.Authenticate((bool success) => {
+            
+            PlayGamesPlatform.Instance.SetTurnBasedMatchListerner(this);
+
+            Debug.Log("Authentifaction Callback");
             EndStandBy();
             if (success) {
                 mStatus = "Authenticated. Hello, " + Social.localUser.userName + " (" +
                     Social.localUser.id + ")";
+                PlayGamesPlatform platform = (PlayGamesPlatform) Social.Active;
+
+                mPendingMatch = platform.GetTurnBasedMatch();
+                UpdateMatchStatus();
+
             } else {
                 mStatus = "*** Failed to authenticate.";
+                mMatchStatus = "";
             }
             ShowEffect(success);
         });
     }
+
+    private void UpdateMatchStatus()
+    {   
+        if (mPendingMatch != null )
+        {
+            Debug.Log( mPendingMatch.ToString() );
+            Debug.Log( mPendingMatch.IsPendingParticipantLoggedInPlayer() );
+            
+            mMatchStatus = string.Format("Intent: Match {0}\n{1}", mPendingMatch.Guid, 
+                                         System.Text.UTF8Encoding.Default.GetString( mPendingMatch.CurrentData ) );
+        }
+        else
+        {
+            
+            PlayGamesPlatform platform = (PlayGamesPlatform) Social.Active;
+            platform.GetPendingMatches( (List<TurnBasedMatchInfo> result) => { 
+                
+                switch( result.Count)
+                {
+                case 1:
+                    mPendingMatch = result[0];
+                    mMatchStatus = string.Format("1 Match {0} Found\n{1}", mPendingMatch.Guid, 
+                                                 System.Text.UTF8Encoding.Default.GetString( mPendingMatch.CurrentData ) );
+                    break; 
+                case 0: 
+                    mMatchStatus = string.Format("No Pending Match found.");
+                    break;
+                default:
+                    mMatchStatus = string.Format("Mutiple Pending Matches ({0}) Found\nPlease selec games througt the Inbox UI", result.Count);
+                    break;
+                }
+                
+            } );
+        }
+    }    
     
     void DoSignOut() {
-        ((PlayGamesPlatform) Social.Active).SignOut();
         mStatus = "Signing out.";
+        mMatchStatus = "";
+        ((PlayGamesPlatform) Social.Active).SignOut();
     }
-
+    
     void DoAchievementReveal() {
         SetStandBy("Revealing achievement...");
         Social.ReportProgress(Settings.AchievementToReveal, 0.0f, (bool success) => {
@@ -282,17 +393,96 @@ public class MainGui : MonoBehaviour, GooglePlayGames.BasicApi.OnStateLoadedList
         ((PlayGamesPlatform) Social.Active).LoadState(0, this);
     }
 
-    void DoTurnBasedMultiplayerGame()
+    void DoCreateTurnBasedMultiplayerGame()
     {
         PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
-        p.ShowPlayerSelectionUI( 1, 1 );
+        mMatchStatus = "Starting Match Creation";
+        p.CreateTurnBasedMatch( this, 1, 1 );
     }
 
     void DoShowMatchInbox()
     {
         PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
-        p.ShowMatchInboxUI();
+        p.ShowMatchInboxUI((TurnBasedMatchInfo match) => {
+            mPendingMatch = match;
+            UpdateMatchStatus();
+        } );
 
     }
 
+    void DoTakeTurn()
+    {
+        if ( mPendingMatch !=  null )
+        {
+            mMatchStatus = string.Format( "Taking turn in {0} ", mPendingMatch.Guid );
+            PlayGamesPlatform p = (PlayGamesPlatform) Social.Active;
+
+            string data = System.Text.UTF8Encoding.Default.GetString( mPendingMatch.CurrentData )
+                + " " + UnityEngine.Random.Range(0, 10).ToString();
+
+            p.TBMG_TakeTurn( mPendingMatch.Guid,
+                            System.Text.UTF8Encoding.Default.GetBytes( data ),
+                            GetNextRoundRobinParticipantId( mPendingMatch) );
+        }
+        else
+        {
+            Debug.LogError( "Error, mPendingMatch is null");
+        }
+    }
+
+    #region BasicImplementation ofI TurnBasedMatchListerner
+    public byte[] GetInitialData( TurnBasedMatchInfo match)
+    {
+        return System.Text.UTF8Encoding.Default.GetBytes("D:"); 
+    }
+
+    public string GetInitialParticipant( TurnBasedMatchInfo match) 
+    {
+        return match.ParticipantIds[0]; 
+    }
+
+    public void OnTurnBasedMatchInitiated(int statusCode, TurnBasedMatchInfo match)
+    {
+        mMatchStatus = string.Format("Match {0} Initiated", match.Guid);
+        mPendingMatch = match;
+    }
+
+    public void OnTurnBasedMatchUpdated(int statusCode, TurnBasedMatchInfo match)
+    {
+        
+        mPendingMatch = null;
+
+        if (match != null)
+        {
+            mMatchStatus = string.Format("Match {0} Upated\n{1}", match.Guid, 
+                                         System.Text.UTF8Encoding.Default.GetString( match.CurrentData ) );
+            if ( match.IsPendingParticipantLoggedInPlayer() )
+            {
+                mPendingMatch = match;
+            }
+
+        }
+    }
+
+    private string GetNextRoundRobinParticipantId( TurnBasedMatchInfo match )
+    {
+        Debug.Log(" GetNextRoundRobinParticipantId ");
+        Debug.Log( match.ToString() );
+
+        int currentPlayerIdx = -1;
+        for( int i =0; i< match.ParticipantIds.Count;i++)
+        {
+            if ( match.ParticipantIds[i] == match.PendingParticipantId)
+            {
+                currentPlayerIdx = i ;
+            }
+        }
+        int nextPlayerIdx = (currentPlayerIdx+1) % (match.ParticipantIds.Count);
+
+        Debug.Log( string.Format( "CurrentPlayerIdx:{0}, NextPlayerIdx:{1}", currentPlayerIdx, nextPlayerIdx) );
+        
+        return match.ParticipantIds[ nextPlayerIdx ];
+    }
+
+    #endregion
 }

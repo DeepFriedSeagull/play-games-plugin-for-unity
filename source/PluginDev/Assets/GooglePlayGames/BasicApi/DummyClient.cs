@@ -75,13 +75,15 @@ namespace GooglePlayGames.BasicApi {
         // Show player selection UI
         public void ShowPlayerSelectionUI(int minPlayers, int maxPlayers) {}
         // Show Match Inbox UI
-        public void ShowMatchInboxUI() {}
+        public void ShowMatchInboxUI(Action<TurnBasedMatchInfo> callback) {}
 		// Set Client Callbaks for TurnBasedGame
 		public void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner ) {}
 		// Take a turn in turn based game
 		public void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant ) {}
 		// Return the TurnBasedMatchInfo for the launching Intent
-		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo() { return null; }
+		public TurnBasedMatchInfo GetTurnBasedMatch() { return null; }
+        // Return a list of all pending TurnBasedMatch
+        public void GetPendingMatches( Action< List< TurnBasedMatchInfo > > callback) {}
    		#endregion
 		
         public void SubmitScore(string lbId, long score, Action<bool> callback) {

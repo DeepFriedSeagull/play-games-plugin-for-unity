@@ -39,16 +39,25 @@ namespace GooglePlayGames
 
 		public TurnBasedMatchInfo ( AndroidJavaObject turnBasedMatch ) 
 		{
+            Debug.Log("TurnBasedMatchInfo ctr");
+
+            if (turnBasedMatch == null)
+            {
+                Debug.LogWarning("turnBasedMatch param is null");
+                return;
+            }
+
 			Guid = turnBasedMatch.Call<string>( "getMatchId" );
 
 			AndroidJavaObject arrayListParticipantIdsJNI = turnBasedMatch.Call<AndroidJavaObject>( "getParticipantIds" );
-
-			AndroidJavaObject arrayParticipantIdsJNI = arrayListParticipantIdsJNI.Call<AndroidJavaObject>("toArray");
-			
-			string[] arrayParticipantIdsCSharp = AndroidJNIHelper.ConvertFromJNIArray<string[]>( arrayParticipantIdsJNI.GetRawObject() );
+            
+            Debug.Log("1");
+            AndroidJavaObject arrayParticipantIdsJNI = arrayListParticipantIdsJNI.Call<AndroidJavaObject>("toArray");
+            
+            Debug.Log("2");
+            string[] arrayParticipantIdsCSharp = AndroidJNIHelper.ConvertFromJNIArray<string[]>( arrayParticipantIdsJNI.GetRawObject() );
 			
 			ParticipantIds = new List<string>( arrayParticipantIdsCSharp );
-
 			ParticipantDisplayNames = new List<string>();
 			PlayerIds = new List<string>();
 			foreach ( string participantId in ParticipantIds )
@@ -61,11 +70,15 @@ namespace GooglePlayGames
 				AndroidJavaObject player = participant.Call<AndroidJavaObject>("getPlayer");
 				//public abstract String getPlayerId ()
 				PlayerIds.Add (player.Call<string>("getPlayerId") );
+
+                participant.Dispose(); participant = null;
+                player.Dispose(); player = null;
 			}
-
+            
+            Debug.Log("3");
 			PendingParticipantId = turnBasedMatch.Call<string>("getPendingParticipantId"); 
-
-
+            
+            Debug.Log("4");
 			try
 			{
 				AndroidJavaObject dataJNI = turnBasedMatch.Call<AndroidJavaObject>("getData");
@@ -73,11 +86,16 @@ namespace GooglePlayGames
 				{
 					CurrentData = AndroidJNIHelper.ConvertFromJNIArray<byte[]>( dataJNI.GetRawObject() );
 				}
+
+                //CurrentData = turnBasedMatch.Call<byte[]>("getData");
 			}
 			catch ( Exception )
 			{
-				CurrentData = null;
 			}
+
+            arrayListParticipantIdsJNI.Dispose(); arrayListParticipantIdsJNI = null;            
+            arrayParticipantIdsJNI.Dispose(); arrayParticipantIdsJNI = null;
+
 		}
 
 		override public string ToString()

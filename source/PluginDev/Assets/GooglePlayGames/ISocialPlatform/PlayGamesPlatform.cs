@@ -426,6 +426,17 @@ namespace GooglePlayGames {
         }
 
 
+        public void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner )
+        {
+            if (!IsAuthenticated()) {
+                Logger.e("CreateTurnBasedMatch can only be called after authentication.");
+                return;
+            }
+            // Set Listener
+            mClient.SetTurnBasedMatchListerner( listerner );
+        }
+
+
 		
 		/// <summary>
 		/// Create a Turned based match
@@ -508,7 +519,7 @@ namespace GooglePlayGames {
         /// <summary>
         /// Shows the default interface for the match inbox.
         /// </summary>
-        public void ShowMatchInboxUI()
+        public void ShowMatchInboxUI(Action<TurnBasedMatchInfo> callback )
         {    
             if (!IsAuthenticated()) {
                 Logger.e("ShowMatchInboxUI can only be called after authentication.");
@@ -516,22 +527,32 @@ namespace GooglePlayGames {
             }
             
             Logger.d("ShowMatchInboxUI");
-            mClient.ShowMatchInboxUI();
+            mClient.ShowMatchInboxUI( callback );
         }
 
 		
 		// Returned the turn base match info
-		public TurnBasedMatchInfo GetIntentTurnBasedMatchInfo()
+		public TurnBasedMatchInfo GetTurnBasedMatch()
 		{
 			if (!IsAuthenticated()) {
-				Logger.e("GetIntentTurnBasedMatchInfo can only be called after authentication.");
+				Logger.e("GetTurnBasedMatchInfo can only be called after authentication.");
 				return null;
 			}
 			
-			Logger.d("GetIntentTurnBasedMatchInfo");
-			return mClient.GetIntentTurnBasedMatchInfo();
+            Logger.d("GetTurnBasedMatchInfo");
+			return mClient.GetTurnBasedMatch();
 		}
 
+        public void GetPendingMatches( Action< List< TurnBasedMatchInfo > > callback)
+        {
+            if (!IsAuthenticated()) {
+                Logger.e("GetPendingMatches can only be called after authentication.");
+                return;
+            }
+            
+            Logger.d("GetPendingMatches");
+            mClient.GetPendingMatches( callback );
+        }
 
         /// <summary>
         /// Sets the default leaderboard for the leaderboard UI. After calling this
