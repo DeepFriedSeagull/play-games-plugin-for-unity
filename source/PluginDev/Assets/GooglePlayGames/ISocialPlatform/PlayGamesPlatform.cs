@@ -429,7 +429,7 @@ namespace GooglePlayGames {
         public void SetTurnBasedMatchListerner( ITurnBasedMatchListerner listerner )
         {
             if (!IsAuthenticated()) {
-                Logger.e("CreateTurnBasedMatch can only be called after authentication.");
+                Logger.e("SetTurnBasedMatchListerner can only be called after authentication.");
                 return;
             }
             // Set Listener
@@ -470,13 +470,34 @@ namespace GooglePlayGames {
 		public void TBMG_TakeTurn(string matchId, byte[] newData, string pendingParticipant )
 		{
 			if (!IsAuthenticated()) {
-				Logger.e("CreateTurnBasedMatch can only be called after authentication.");
+                Logger.e("TBMG_TakeTurn can only be called after authentication.");
 				return;
 			}
 
 			mClient.TBMG_TakeTurn(  matchId, newData, pendingParticipant );
 		}
 
+        // Take a turn (the final one) and call it a win for winningParticipantId
+        public void TBMG_TakeFinalTurnAndDeclareWinner( string matchId, byte[] newData, string winningParticipantId)
+        {
+            if (!IsAuthenticated()) {
+                Logger.e("TBMG_TakeFinalTurnAndWin can only be called after authentication.");
+                return;
+            }
+            
+            mClient.TBMG_TakeFinalTurnAndDeclareWinner(  matchId, newData, winningParticipantId );
+        }
+
+        // Finish a match, accepting the result     
+        public void TBMG_FinishMatch( string matchId )
+        {
+            if (!IsAuthenticated()) {
+                Logger.e("TBMG_FinishMatch can only be called after authentication.");
+                return;
+            }
+            
+            mClient.TBMG_FinishMatch(  matchId  );
+        }
 
         /// <summary>
         /// Shows the standard Google Play Games leaderboards user interface,

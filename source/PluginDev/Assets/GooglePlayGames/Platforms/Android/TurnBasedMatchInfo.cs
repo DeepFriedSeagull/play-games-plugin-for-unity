@@ -39,15 +39,13 @@ namespace GooglePlayGames
 
 		public TurnBasedMatchInfo ( AndroidJavaObject turnBasedMatch ) 
 		{
-            Debug.Log("TurnBasedMatchInfo ctr");
-
             if (turnBasedMatch == null)
             {
-                Debug.LogWarning("turnBasedMatch param is null");
+                Debug.LogWarning("TurnBasedMatchInfo::ctr turnBasedMatch param is null");
                 return;
             }
 
-			Guid = turnBasedMatch.Call<string>( "getMatchId" );
+            Guid = turnBasedMatch.Call<string>( "getMatchId" );
 
 			AndroidJavaObject arrayListParticipantIdsJNI = turnBasedMatch.Call<AndroidJavaObject>( "getParticipantIds" );
             
@@ -101,6 +99,7 @@ namespace GooglePlayGames
 		override public string ToString()
 		{
 			StringBuilder stringBuilder = new StringBuilder();
+			stringBuilder.AppendLine( "******* TurnBasedMatchInfo::ToString() START ******" );
 			stringBuilder.AppendLine( "GUID: " + Guid );
 			stringBuilder.AppendLine( "PendingParticipanID: " + PendingParticipantId );
 			
@@ -122,6 +121,7 @@ namespace GooglePlayGames
 			{
 				stringBuilder.AppendLine("Data: null");
 			}
+			stringBuilder.AppendLine( "******* TurnBasedMatchInfo::ToString() END ******" );
 			return stringBuilder.ToString();
 		}
 

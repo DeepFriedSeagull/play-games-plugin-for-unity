@@ -92,10 +92,17 @@ namespace GooglePlayGames.BasicApi {
 
 		// Take turn in a Turn Based Match Game
 		void TBMG_TakeTurn( string matchId, byte[] newData, string pendingParticipant );
-        
+
+        // Take a final turn in TBMG and declare a winner
+        void TBMG_TakeFinalTurnAndDeclareWinner( string matchId, byte[] newData, string winningParticipantId);
+
+        // Finish a match, accepting the result        
+        void TBMG_FinishMatch( string matchId );
+
 		// Return the TurnBasedMatchInfo for the launching Intent
 		TurnBasedMatchInfo GetTurnBasedMatch();
 
+        // Retrieve all the games in which its my turn to play
         void GetPendingMatches( Action< List< TurnBasedMatchInfo > > callback);
 
 		// Report a score to given leaderboard

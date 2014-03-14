@@ -667,7 +667,41 @@ namespace GooglePlayGames.Android {
 			}, null );
 
 		}
+		
+		 // Take a final turn in TBMG and declare a winner       
+        // Called from the Game thread
+        public void TBMG_TakeFinalTurnAndDeclareWinner( string matchId, byte[] newData, string winningParticipantId)        
+        {
+            // Not every participant is required to have a result, 
+            // but providing results for participants who are not in the match is an error.
+            // Setting the winner
+            AndroidJavaObject[] participantResultsArray  = new AndroidJavaObject[]
+            {
+                new AndroidJavaObject("com.google.android.gms.games.multiplayer.ParticipantResult",
+                                      winningParticipantId, 0, -1 )
+            };
+       
+            CallClientApi("TBMG_TakeFinalTurnAndWin", () => {
+                mGHManager.CallGmsApiWithResult( "games.Games", "TurnBasedMultiplayer", "finishMatch",
+                                                new OnTurnBasedMatchUpdatedResultProxy( this ),
+                                                matchId, newData,
+                                                participantResultsArray
+                                                );
+            }, null );
+        }
 
+        // Finish a match, accepting the result    
+		// Called from the Game Thread    
+        public void TBMG_FinishMatch( string matchId )
+        {    
+
+            CallClientApi("TBMG_FinishMatch", () => {
+                mGHManager.CallGmsApiWithResult( "games.Games", "TurnBasedMultiplayer", "finishMatch",
+                                                new OnTurnBasedMatchUpdatedResultProxy( this ),
+                                                matchId );
+            }, null );
+
+        }
 
         // called from game thread
         public void ShowMatchInboxUI( Action<TurnBasedMatchInfo> callback )
